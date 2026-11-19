@@ -240,8 +240,10 @@ class ScanActivity : AppCompatActivity() {
                         status.text = "Page $n captured"
                         val page = Store.snapshot().lastOrNull()
                         if (Prefs.autoRead(this@ScanActivity) && page != null) {
-                            say("Page $n captured. Reading.")
                             readingNow = true
+                            say("Your image has been captured. Page $n.")
+                            delay(700)
+                            while (Speaker.isSpeaking() && readingNow) delay(200)
                             var waited = 0
                             while (page.text == null && waited < 90000 && readingNow) { delay(300); waited += 300 }
                             val t = page.text?.trim().orEmpty()
@@ -260,7 +262,7 @@ class ScanActivity : AppCompatActivity() {
                             say("Turn the page.")
                             delay(2500)
                         } else {
-                            say("Page $n captured. Turn the page.")
+                            say("Your image has been captured. Page $n. Turn the page.")
                             delay(3500)
                         }
                         kind = ""
