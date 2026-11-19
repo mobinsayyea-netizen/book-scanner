@@ -43,8 +43,6 @@ class ScanActivity : AppCompatActivity() {
     private var lastAnalysis = 0L
     private var goodCount = 0
     private var lastRect: RectF? = null
-    private var lastMsg = ""
-    private var lastMsgTime = 0L
 
     private val perm = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) startCamera() else {
@@ -148,29 +146,51 @@ class ScanActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun guide(m: String) {
+    private var kind = ""
+    private var kindSince = 0L
+    private var lastSpoke = 0L
+    private var stableCount = 0
+
+    // Shows the message at once on screen, but speaks it only if the same situation
+    // has lasted for "wait" ms and the last spoken message is older than "repeat" ms.
+    private fun guide(m: String, wait: Long, repeat: Long) {
         val now = SystemClock.elapsedRealtime()
-        if (m != lastMsg || now - lastMsgTime > 4000) {
-            lastMsg = m
-            lastMsgTime = now
-            status.text = m + "  (Pages: ${Store.size()})"
+        if (m != kind) { kind = m; kindSince = now }
+        status.text = m + "  (Pages: " + Store.size() + ")"
+        if (now - kindSince >= wait && now - lastSpoke >= repeat) {
+            lastSpoke = now
             say(m)
         }
     }
 
     private fun onFrame(res: Text, w: Int, h: Int) {
         if (capturing) return
+        val now = SystemClock.elapsedRealtime()
         val boxes = res.textBlocks.mapNotNull { it.boundingBox }
         if (boxes.isEmpty() || res.text.length < 15) {
             goodCount = 0
+            stableCount = 0
             lastRect = null
-            guide("No page found. Point the camera at the page.")
+            guide("No page found. Point the camera at the page.", 5000, 15000)
             return
         }
         val l = boxes.minOf { it.left }.toFloat()
         val t = boxes.minOf { it.top }.toFloat()
         val r = boxes.maxOf { it.right }.toFloat()
         val b = boxes.maxOf { it.bottom }.toFloat()
+        val cur = RectF(l / w, t / h, r / w, b / h)
+        val prev = lastRect
+        lastRect = cur
+        val moved = prev == null || Math.abs(prev.left - cur.left) > 0.06f || Math.abs(prev.top - cur.top) > 0.06f ||
+            Math.abs(prev.right - cur.right) > 0.06f || Math.abs(prev.bottom - cur.bottom) > 0.06f
+        if (moved) {
+            // Phone is moving: stay silent and give time to settle
+            kindSince = now
+            goodCount = 0
+            stableCount = 0
+        } else {
+            stableCount++
+        }
         val mx = w * 0.03f
         val my = h * 0.03f
         val edges = ArrayList<String>()
@@ -179,9 +199,13 @@ class ScanActivity : AppCompatActivity() {
         if (t < my) edges.add("top")
         if (b > h - my) edges.add("bottom")
         val area = (r - l) * (b - t) / (w * h)
+
+        // Page is steady for a long time: capture anyway, even if a little cut at an edge
+        if (area >= 0.30f && stableCount >= 8 && autoOn) { capture(); return }
+
         if (edges.size >= 2) {
             goodCount = 0
-            guide("Move the phone away a little")
+            guide("Move the phone away a little", 2500, 6000)
         } else if (edges.size == 1) {
             goodCount = 0
             guide(when (edges[0]) {
@@ -189,19 +213,16 @@ class ScanActivity : AppCompatActivity() {
                 "right" -> "Move the phone a little to the right"
                 "top" -> "Move the phone a little up"
                 else -> "Move the phone a little down"
-            })
+            }, 2500, 6000)
         } else if (area < 0.30f) {
             goodCount = 0
-            guide("Move the phone closer")
+            guide("Move the phone closer", 2500, 6000)
         } else {
-            val cur = RectF(l / w, t / h, r / w, b / h)
-            val prev = lastRect
-            lastRect = cur
-            val moved = prev != null && (Math.abs(prev.left - cur.left) > 0.06f || Math.abs(prev.top - cur.top) > 0.06f ||
-                Math.abs(prev.right - cur.right) > 0.06f || Math.abs(prev.bottom - cur.bottom) > 0.06f)
-            goodCount = if (moved || prev == null) 1 else goodCount + 1
-            if (goodCount == 1) guide("Good. Hold steady")
-            if (goodCount >= 3 && autoOn) capture()
+            kind = ""
+            if (!moved) goodCount++ else goodCount = 1
+            status.text = "Good. Hold steady  (Pages: " + Store.size() + ")"
+            if (goodCount == 2 && now - lastSpoke > 3000) { lastSpoke = now; say("Good. Hold steady") }
+            if (goodCount >= 4 && autoOn) capture()
         }
     }
 
@@ -242,7 +263,11 @@ class ScanActivity : AppCompatActivity() {
                             say("Page $n captured. Turn the page.")
                             delay(3500)
                         }
-                        lastMsg = ""
+                        kind = ""
+                        kindSince = SystemClock.elapsedRealtime()
+                        lastSpoke = SystemClock.elapsedRealtime()
+                        stableCount = 0
+                        lastRect = null
                         capturing = false
                     }
                 }
