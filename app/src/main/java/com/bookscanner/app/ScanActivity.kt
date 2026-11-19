@@ -39,6 +39,7 @@ class ScanActivity : AppCompatActivity() {
     private val exec = Executors.newSingleThreadExecutor()
     private var autoOn = true
     @Volatile private var capturing = false
+    @Volatile private var readingNow = false
     private var lastAnalysis = 0L
     private var goodCount = 0
     private var lastRect: RectF? = null
@@ -93,6 +94,10 @@ class ScanActivity : AppCompatActivity() {
             finish()
         })
         col.addView(r2)
+        col.addView(uiButton("Stop Reading / Next Page") {
+            readingNow = false
+            Speaker.stop()
+        })
         setContentView(col)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startCamera()
         else perm.launch(Manifest.permission.CAMERA)
@@ -212,8 +217,31 @@ class ScanActivity : AppCompatActivity() {
                     lifecycleScope.launch {
                         val n = withContext(Dispatchers.IO) { Importer.addFromFile(applicationContext, file) }
                         status.text = "Page $n captured"
-                        say("Page $n captured. Turn the page.")
-                        delay(3500)
+                        val page = Store.snapshot().lastOrNull()
+                        if (Prefs.autoRead(this@ScanActivity) && page != null) {
+                            say("Page $n captured. Reading.")
+                            readingNow = true
+                            var waited = 0
+                            while (page.text == null && waited < 90000 && readingNow) { delay(300); waited += 300 }
+                            val t = page.text?.trim().orEmpty()
+                            if (readingNow) {
+                                if (t.isEmpty()) {
+                                    Speaker.say("No text found on this page.")
+                                    delay(2000)
+                                } else {
+                                    status.text = "Page $n: " + t.take(400)
+                                    Speaker.readLong(t)
+                                    delay(600)
+                                    while (Speaker.isSpeaking() && readingNow) delay(300)
+                                }
+                            }
+                            readingNow = false
+                            say("Turn the page.")
+                            delay(2500)
+                        } else {
+                            say("Page $n captured. Turn the page.")
+                            delay(3500)
+                        }
                         lastMsg = ""
                         capturing = false
                     }

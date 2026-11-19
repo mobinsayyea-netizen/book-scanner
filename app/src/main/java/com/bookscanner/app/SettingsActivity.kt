@@ -50,6 +50,13 @@ class SettingsActivity : AppCompatActivity() {
         voice.isChecked = Prefs.voice(this)
         voice.setOnCheckedChangeListener { _, c -> Prefs.setVoice(this, c) }
         col.addView(voice)
+        val ar = CheckBox(this)
+        ar.text = "Read each page aloud automatically"
+        ar.textSize = 18f
+        ar.setTextColor(Color.WHITE)
+        ar.isChecked = Prefs.autoRead(this)
+        ar.setOnCheckedChangeListener { _, c -> Prefs.setAutoRead(this, c) }
+        col.addView(ar)
         val auto = CheckBox(this)
         auto.text = "Auto capture when the page is in frame"
         auto.textSize = 18f

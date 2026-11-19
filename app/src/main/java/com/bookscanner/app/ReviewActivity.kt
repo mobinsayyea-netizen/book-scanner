@@ -12,6 +12,8 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -25,6 +27,7 @@ class ReviewActivity : AppCompatActivity() {
     private var fmt = 0
     private var waiting = false
     private var reading = false
+    private var readJob: Job? = null
     private var lastUri: Uri? = null
     private var lastMime = "*/*"
     private val listener: () -> Unit = {
@@ -84,6 +87,7 @@ class ReviewActivity : AppCompatActivity() {
         sv.setBackgroundColor(Color.BLACK)
         sv.addView(col)
         setContentView(sv)
+        if (intent.getBooleanExtra("autoread", false) && Prefs.autoRead(this)) startRead()
     }
 
     override fun onResume() {
@@ -114,16 +118,42 @@ class ReviewActivity : AppCompatActivity() {
     }
 
     private fun toggleRead() {
-        if (reading) { Speaker.stop(); reading = false; return }
-        val pages = Store.snapshot()
-        val sb = StringBuilder()
-        pages.forEachIndexed { i, p ->
-            val t = p.text?.trim().orEmpty()
-            if (t.isNotEmpty()) sb.append("Page ${i + 1}.\n").append(t).append("\n\n")
-        }
-        if (sb.isEmpty()) { Speaker.say("No text is ready yet."); return }
+        if (reading) stopRead() else startRead()
+    }
+
+    private fun stopRead() {
+        reading = false
+        readJob?.cancel()
+        Speaker.stop()
+    }
+
+    private fun startRead() {
+        if (Store.size() == 0) { Speaker.say("There are no pages."); return }
         reading = true
-        Speaker.readLong(sb.toString())
+        readJob?.cancel()
+        readJob = lifecycleScope.launch {
+            var i = 0
+            while (reading) {
+                val pages = Store.snapshot()
+                if (i >= pages.size) break
+                val p = pages[i]
+                while (p.text == null && reading) delay(300)
+                if (!reading) break
+                val t = p.text.orEmpty().trim()
+                if (t.isNotEmpty()) {
+                    Speaker.readLong("Page ${i + 1}.\n$t")
+                    delay(600)
+                    while (Speaker.isSpeaking() && reading) delay(300)
+                }
+                i++
+            }
+            reading = false
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (reading) stopRead()
     }
 
     private fun doSave() {

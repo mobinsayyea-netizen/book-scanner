@@ -102,7 +102,7 @@ class MainActivity : AppCompatActivity() {
             refresh()
             if (added > 0) {
                 Speaker.say("$added pages added. Opening review.")
-                startActivity(Intent(this@MainActivity, ReviewActivity::class.java))
+                startActivity(Intent(this@MainActivity, ReviewActivity::class.java).putExtra("autoread", true))
             } else {
                 Speaker.say("No pages could be imported.")
             }

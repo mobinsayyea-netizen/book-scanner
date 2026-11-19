@@ -93,6 +93,8 @@ object Prefs {
     fun setRate(c: Context, v: Float) = sp(c).edit().putFloat("rate", v).apply()
     fun voice(c: Context): Boolean = sp(c).getBoolean("voice", true)
     fun setVoice(c: Context, v: Boolean) = sp(c).edit().putBoolean("voice", v).apply()
+    fun autoRead(c: Context): Boolean = sp(c).getBoolean("autoread", true)
+    fun setAutoRead(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoread", v).apply()
     fun auto(c: Context): Boolean = sp(c).getBoolean("auto", true)
     fun setAuto(c: Context, v: Boolean) = sp(c).edit().putBoolean("auto", v).apply()
 }
@@ -132,6 +134,8 @@ object Speaker {
         if (!ready) { queued = text; return }
         speak(text, true, false)
     }
+
+    fun isSpeaking(): Boolean = tts?.isSpeaking == true
 
     fun readLong(text: String) {
         if (!ready) return
